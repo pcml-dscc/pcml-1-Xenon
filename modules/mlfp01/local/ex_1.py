@@ -82,9 +82,9 @@ print(f"is_tropical:   {type(is_tropical).__name__}   → {is_tropical}")
 # --- 1b: Type conversion ---
 price_str = "450000"  # This is text, not a number — you can't do math
 # TODO: Convert price_str to an integer named price_int
-price_int = ____  # Hint: int(price_str)
+price_int = int(price_str)  # Hint: int(price_str)
 # TODO: Convert price_str to a float named price_float
-price_float = ____  # Hint: float(price_str)
+price_float = float(price_str)  # Hint: float(price_str)
 height_int = int(3.7)  # Truncates toward zero: 3 (NOT rounded)
 bool_from_int = bool(1)  # Any nonzero number is True; 0 is False
 
@@ -117,7 +117,7 @@ print("\n✓ Checkpoint 1 passed — variables, types, and conversions working\n
 raw_town = "  ang mo kio  "
 clean_town = raw_town.strip()  # Remove leading/trailing whitespace
 # TODO: Convert clean_town to uppercase and assign to upper_town
-upper_town = ____  # Hint: clean_town.upper()
+upper_town = clean_town.upper()  # Hint: clean_town.upper()
 title_town = clean_town.title()  # "Ang Mo Kio" — for display
 word_count = len(clean_town.split())  # Split by spaces, count the pieces
 
@@ -132,7 +132,7 @@ print(f"words:  {word_count}")
 dirty_price = "S$450,000"
 # TODO: Remove "S$" and "," from dirty_price, assign to numeric_price
 numeric_price = dirty_price.replace("S$", "").replace(
-    ____, ____
+    ",", ""
 )  # Hint: replace(",", "")
 print(f"\n'{dirty_price}' → '{numeric_price}' → {int(numeric_price)}")
 
@@ -144,7 +144,7 @@ print(f"'{filename}' ends with '.parquet': {filename.endswith('.parquet')}")
 # --- 2b: f-string formatting specifiers ---
 celsius_avg = 27.5
 # TODO: Convert celsius_avg to Fahrenheit (formula: C * 9/5 + 32)
-fahrenheit_avg = ____  # Hint: celsius_avg * 9 / 5 + 32
+fahrenheit_avg = (celsius_avg * 9 / 5 + 32)  # Hint: celsius_avg * 9 / 5 + 32
 population = 5_917_600
 
 print("\n=== f-string Formatting ===")
@@ -206,7 +206,7 @@ print(f"max(prices):   {max(prices):,}")
 print(f"sorted(prices, reverse=True): {sorted(prices, reverse=True)}")
 
 # TODO: Compute the mean of prices (sum / count) and assign to mean_price
-mean_price = ____  # Hint: sum(prices) / len(prices)
+mean_price = sum(prices) / len(prices)  # Hint: sum(prices) / len(prices)
 print(f"mean(prices):  {mean_price:,.0f}")
 
 price_change = -25_000
@@ -272,7 +272,7 @@ print(f"After pop:    {len(temperatures)} items")
 # --- 4c: List comprehensions ---
 celsius_temps = [27.0, 27.5, 28.0, 28.5, 29.0]
 # TODO: Build fahrenheit_temps by converting each celsius value (C * 9/5 + 32)
-fahrenheit_temps = [____ for c in celsius_temps]  # Hint: c * 9 / 5 + 32
+fahrenheit_temps = [c * 9 / 5 + 32 for c in celsius_temps]  # Hint: c * 9 / 5 + 32
 print(f"\nCelsius:    {celsius_temps}")
 print(f"Fahrenheit: {[round(f, 1) for f in fahrenheit_temps]}")
 
@@ -301,7 +301,7 @@ print(f"Keys:     {list(month_temps.keys())[:4]}...")
 print(f"Values:   {list(month_temps.values())[:4]}...")
 
 # TODO: Find the hottest month using max() with a key function
-hottest_dict = ____  # Hint: max(month_temps, key=month_temps.get)
+hottest_dict = max(month_temps, key=month_temps.get) # Hint: max(month_temps, key=month_temps.get)
 print(f"Hottest:  {hottest_dict} at {month_temps[hottest_dict]}°C")
 
 # --- 4e: for loop with enumerate ---
@@ -376,11 +376,11 @@ print(stats)
 # mean vs median (50%): if they differ a lot, the data is skewed
 
 # TODO: Compute mean temperature and assign to mean_temp
-mean_temp = ____  # Hint: df["mean_temperature_c"].mean()
+mean_temp = df["mean_temperature_c"].mean()  # Hint: df["mean_temperature_c"].mean()
 # TODO: Compute min temperature and assign to min_temp
-min_temp = ____  # Hint: df["mean_temperature_c"].min()
+min_temp = df["mean_temperature_c"].min()  # Hint: df["mean_temperature_c"].min()
 # TODO: Compute max temperature and assign to max_temp
-max_temp = ____  # Hint: df["mean_temperature_c"].max()
+max_temp = df["mean_temperature_c"].max() # Hint: df["mean_temperature_c"].max()
 std_temp = df["mean_temperature_c"].std()
 
 print(f"\nTemperature details:")
@@ -418,9 +418,9 @@ print("\n✓ Checkpoint 6 passed — summary statistics computed correctly\n")
 # --- 7a: Quantiles for temperature ---
 temp_series = df["mean_temperature_c"]
 # TODO: Compute the 25th percentile of temp_series
-temp_q25 = ____  # Hint: temp_series.quantile(0.25)
+temp_q25 = temp_series.quantile(0.25)  # Hint: temp_series.quantile(0.25)
 # TODO: Compute the 50th percentile (median)
-temp_q50 = ____  # Hint: temp_series.quantile(0.50)
+temp_q50 = temp_series.quantile(0.50)  # Hint: temp_series.quantile(0.50)
 temp_q75 = temp_series.quantile(0.75)
 temp_iqr = temp_q75 - temp_q25
 
@@ -481,12 +481,12 @@ print("\n✓ Checkpoint 7 passed — quantiles and advanced statistics correct\n
 # --- 8a: Find the hottest, coldest, and wettest months ---
 # TODO: Filter for the row where temperature equals its maximum
 hottest_row = df.filter(
-    pl.col("mean_temperature_c") == ____
+    pl.col("mean_temperature_c") == df["mean_temperature_c"].max()
 )  # Hint: df["mean_temperature_c"].max()
 coldest_row = df.filter(pl.col("mean_temperature_c") == df["mean_temperature_c"].min())
 # TODO: Filter for the row where rainfall equals its maximum
 wettest_row = df.filter(
-    pl.col("total_rainfall_mm") == ____
+    pl.col("total_rainfall_mm") == df["total_rainfall_mm"].max()
 )  # Hint: df["total_rainfall_mm"].max()
 driest_row = df.filter(pl.col("total_rainfall_mm") == df["total_rainfall_mm"].min())
 
@@ -621,7 +621,7 @@ for row in monthly_deviations.iter_rows(named=True):
 # --- 10c: Polars correlation coefficient ---
 # TODO: Compute Pearson correlation between temperature and rainfall
 temp_rain_corr = (
-    ____  # Hint: df.select(pl.corr("mean_temperature_c", "total_rainfall_mm")).item()
+    df.select(pl.corr("mean_temperature_c","total_rainfall_mm")).item()  # Hint: df.select(pl.corr("mean_temperature_c", "total_rainfall_mm")).item()
 )
 
 print(f"\nPearson correlation (temperature vs rainfall): {temp_rain_corr:.3f}")
