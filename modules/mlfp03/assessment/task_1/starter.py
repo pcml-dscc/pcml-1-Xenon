@@ -18,6 +18,11 @@ import warnings
 import numpy as np
 import polars as pl
 
+from kailash_ml.engines.feature_engineer import (
+    FeatureEngineer,
+    GeneratedColumn,
+    GeneratedFeatures,
+)
 from shared import MLFPDataLoader
 
 warnings.filterwarnings("ignore")
@@ -94,31 +99,87 @@ def solve() -> dict:
     """
     df = _load_base()
 
-    # TODO 1: Engineer the six features with the EXACT formulas in problem.md:
-    #         revenue_per_order, returns_per_order, is_satisfied,
-    #         loyal_and_satisfied, tenure_years, spend_per_tenure_day.
-    #         Hint: df.with_columns([... .alias("revenue_per_order"), ...])
+    df = df.with_columns(
+        [
+            (pl.col("total_revenue") / pl.col("order_count")).alias(
+                "revenue_per_order"
+            ),
+            (pl.col("num_returns") / pl.col("order_count")).alias(
+                "returns_per_order"
+            ),
+            (pl.col("satisfaction_score") >= 4).cast(pl.Int64).alias("is_satisfied"),
+            (
+                pl.col("loyalty_int")
+                * (pl.col("satisfaction_score") >= 4).cast(pl.Int64)
+            ).alias("loyal_and_satisfied"),
+            (pl.col("customer_tenure_days") / 365.0).alias("tenure_years"),
+            (pl.col("total_revenue") / pl.col("customer_tenure_days")).alias(
+                "spend_per_tenure_day"
+            ),
+        ]
+    )
 
-    # TODO 2: Build feature_matrix = the 14 candidate columns
-    #         (BASE_FEATURES + ENGINEERED_FEATURES) plus the TARGET column.
-    #         Do NOT include customer_id, review_text, ltv_tier, or churned.
+    candidate_columns = BASE_FEATURES + ENGINEERED_FEATURES
+    feature_matrix = df.select(candidate_columns + [TARGET])
+    train = feature_matrix.head(int(feature_matrix.height * TRAIN_FRACTION))
 
-    # TODO 3: Take the TRAIN split only (first TRAIN_FRACTION of the rows) so
-    #         no test-set signal leaks into selection.
+    generated_columns = [
+        GeneratedColumn(
+            name="revenue_per_order",
+            source_columns=["total_revenue", "order_count"],
+            strategy="manual_ratio",
+            dtype="float64",
+        ),
+        GeneratedColumn(
+            name="returns_per_order",
+            source_columns=["num_returns", "order_count"],
+            strategy="manual_ratio",
+            dtype="float64",
+        ),
+        GeneratedColumn(
+            name="is_satisfied",
+            source_columns=["satisfaction_score"],
+            strategy="manual_threshold",
+            dtype="int64",
+        ),
+        GeneratedColumn(
+            name="loyal_and_satisfied",
+            source_columns=["loyalty_int", "satisfaction_score"],
+            strategy="manual_interaction",
+            dtype="int64",
+        ),
+        GeneratedColumn(
+            name="tenure_years",
+            source_columns=["customer_tenure_days"],
+            strategy="manual_ratio",
+            dtype="float64",
+        ),
+        GeneratedColumn(
+            name="spend_per_tenure_day",
+            source_columns=["total_revenue", "customer_tenure_days"],
+            strategy="manual_ratio",
+            dtype="float64",
+        ),
+    ]
+    generated = GeneratedFeatures(
+        original_columns=BASE_FEATURES,
+        generated_columns=generated_columns,
+        total_candidates=len(candidate_columns),
+        data=train.select(candidate_columns),
+    )
+    selected = FeatureEngineer(max_features=len(candidate_columns)).select(
+        train,
+        generated,
+        target=TARGET,
+        method="importance",
+        top_k=TOP_K,
+    )
+    selected_features = list(selected.selected_columns)
 
-    # TODO 4: Rank features with kailash-ml FeatureEngineer. Build a
-    #         GeneratedFeatures candidate set (original_columns=BASE_FEATURES,
-    #         generated_columns=[GeneratedColumn(...) for each engineered
-    #         feature]) then call FeatureEngineer(...).select(train, gen,
-    #         target=TARGET, method="importance", top_k=TOP_K).
-    #         Hint: from kailash_ml.engines.feature_engineer import (
-    #                   FeatureEngineer, GeneratedColumn, GeneratedFeatures)
-
-    # TODO 5: Return the required dict.
     return {
-        "feature_matrix": df,  # <- replace with the 14-column candidate matrix
-        "engineered_columns": [],
-        "selected_features": [],
+        "feature_matrix": feature_matrix,
+        "engineered_columns": ENGINEERED_FEATURES,
+        "selected_features": selected_features,
         "target_column": TARGET,
     }
 

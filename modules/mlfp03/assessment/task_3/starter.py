@@ -86,34 +86,111 @@ def _holdout_test(frame: pl.DataFrame) -> pl.DataFrame:
 
 
 async def _run() -> dict:
-    # TODO 1: import ConnectionManager, ModelRegistry, TrainingPipeline,
-    #         ModelExplainer, diagnose, EvalSpec, ModelSpec, FeatureField,
-    #         FeatureSchema. Build the frame, schema (entity_id_column="row_id"),
-    #         and EvalSpec(metrics=["accuracy","f1","auc"], holdout, 0.25).
-    #
-    # TODO 2: train TWO RandomForests via TrainingPipeline:
-    #         - baseline: {n_estimators:150, random_state:42, n_jobs:-1}
-    #         - balanced: same + class_weight="balanced"
-    #
-    # TODO 3: load both fitted models from the registry
-    #         (pickle.loads(await registry.load_artifact(name, version))).
-    #
-    # TODO 4: evaluate per-class behaviour with
-    #         diagnose(model, kind="classical_classifier", data=(X_test,y_test),
-    #         show=False). The minority (positive) class is key "1.0":
-    #         report.per_class["1.0"]["recall"]. Macro recall + accuracy live in
-    #         report.metrics ("recall_macro", "accuracy").
-    #
-    # TODO 5: interpret the BALANCED model with ModelExplainer:
-    #         ModelExplainer(model=bal_model,
-    #                        X=frame.select(BASE_FEATURES).head(SHAP_BACKGROUND),
-    #                        feature_names=BASE_FEATURES).explain_global(
-    #                        max_display=TOP_K)["feature_importance"] -> dict
-    #         ordered by importance; take the first TOP_K keys.
-    #
-    # TODO 6: return the dict described in the docstring (remember to close the
-    #         connection in a finally block).
-    return {}
+    from kailash.db import ConnectionManager
+    from kailash_ml import ModelRegistry, TrainingPipeline, diagnose
+    from kailash_ml.engines.model_explainer import ModelExplainer
+    from kailash_ml.engines.training_pipeline import EvalSpec, ModelSpec
+    from kailash_ml.types import FeatureField, FeatureSchema
+
+    frame = _model_frame()
+    schema = FeatureSchema(
+        name="premium_response_features",
+        features=[
+            FeatureField(name=feature, dtype="float64", nullable=False)
+            for feature in BASE_FEATURES
+        ],
+        entity_id_column="row_id",
+    )
+    eval_spec = EvalSpec(
+        metrics=["accuracy", "f1", "auc"],
+        split_strategy="holdout",
+        test_size=0.25,
+    )
+
+    conn = ConnectionManager("sqlite:///:memory:")
+    try:
+        await conn.initialize()
+        registry = ModelRegistry(conn)
+        pipeline = TrainingPipeline(feature_store=None, registry=registry)
+
+        base_params = {"n_estimators": 150, "random_state": SEED, "n_jobs": -1}
+        baseline_result = await pipeline.train(
+            data=frame,
+            schema=schema,
+            model_spec=ModelSpec(
+                model_class="sklearn.ensemble.RandomForestClassifier",
+                framework="sklearn",
+                hyperparameters=base_params,
+            ),
+            eval_spec=eval_spec,
+            experiment_name="premium_response_rf_baseline",
+        )
+        balanced_result = await pipeline.train(
+            data=frame,
+            schema=schema,
+            model_spec=ModelSpec(
+                model_class="sklearn.ensemble.RandomForestClassifier",
+                framework="sklearn",
+                hyperparameters={**base_params, "class_weight": "balanced"},
+            ),
+            eval_spec=eval_spec,
+            experiment_name="premium_response_rf_balanced",
+        )
+
+        baseline_blob = await registry.load_artifact(
+            "premium_response_rf_baseline",
+            baseline_result.model_version.version,
+        )
+        balanced_blob = await registry.load_artifact(
+            "premium_response_rf_balanced",
+            balanced_result.model_version.version,
+        )
+        baseline_model = pickle.loads(baseline_blob)
+        balanced_model = pickle.loads(balanced_blob)
+
+        test = _holdout_test(frame)
+        X_test = test.select(BASE_FEATURES)
+        y_test = test[TARGET].to_numpy().astype(float)
+        baseline_report = diagnose(
+            baseline_model,
+            kind="classical_classifier",
+            data=(X_test, y_test),
+            show=False,
+        )
+        balanced_report = diagnose(
+            balanced_model,
+            kind="classical_classifier",
+            data=(X_test, y_test),
+            show=False,
+        )
+
+        feature_importance = ModelExplainer(
+            model=balanced_model,
+            X=frame.select(BASE_FEATURES).head(SHAP_BACKGROUND),
+            feature_names=BASE_FEATURES,
+        ).explain_global(max_display=TOP_K)["feature_importance"]
+
+        return {
+            "baseline_minority_recall": float(
+                baseline_report.per_class["1.0"]["recall"]
+            ),
+            "balanced_minority_recall": float(
+                balanced_report.per_class["1.0"]["recall"]
+            ),
+            "baseline_recall_macro": float(
+                baseline_report.metrics["recall_macro"]
+            ),
+            "balanced_recall_macro": float(
+                balanced_report.metrics["recall_macro"]
+            ),
+            "baseline_accuracy": float(baseline_report.metrics["accuracy"]),
+            "balanced_accuracy": float(balanced_report.metrics["accuracy"]),
+            "roc_auc": float(balanced_result.metrics["auc"]),
+            "top_features": list(feature_importance.keys())[:TOP_K],
+            "n_features": len(BASE_FEATURES),
+        }
+    finally:
+        await conn.close()
 
 
 def solve() -> dict:

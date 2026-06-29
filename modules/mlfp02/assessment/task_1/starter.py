@@ -1,7 +1,7 @@
 # Copyright 2026 Terrene Foundation
 # SPDX-License-Identifier: Apache-2.0
 """
-MLFP02 — Assessment Task 1: Probability, Bayes & Experiment Validation
+MLFP02 - Assessment Task 1: Probability, Bayes & Experiment Validation
 
 Complete the `solve()` function. Read problem.md for the full specification.
 Your submission is auto-graded: every probability, the SRM chi-square, the
@@ -35,25 +35,73 @@ def solve() -> dict:
     loader = MLFPDataLoader()
     df = loader.load("mlfp02", "experiment_data.parquet")
 
-    # TODO 1: Restrict to the control + treatment_a cohort and add a boolean
-    #         `converted` column = (metric_value >= CONVERT_THRESHOLD).
-    # TODO 2: Compute p_convert_overall, p_convert_control, p_convert_treatment.
-    # TODO 3: Bayes inversion p_treatment_given_convert =
-    #         P(converted|treatment) * P(treatment) / P(converted), where
-    #         P(treatment) is the treatment_a share of the cohort.
-    # TODO 4: SRM check vs a designed 50/50 split — chi-square goodness-of-fit
-    #         on [n_control, n_treatment] with expected = n_total/2 each
-    #         (df=1). srm_p_value = stats.chi2.sf(chi2, df=1);
-    #         srm_flag = (srm_p_value < 1e-3).
-    # TODO 5: Fraud base-rate Bayes (use the FRAUD_* constants):
-    #         P(fraud|flagged) = sens*base / (sens*base + fpr*(1-base)).
-    # TODO 6: Beta-Binomial update on treatment_a: successes = sum(converted),
-    #         failures = n - successes; posterior = Beta(prior_a+successes,
-    #         prior_b+failures); posterior_mean = a/(a+b);
-    #         95% credible interval via stats.beta.ppf(0.025/0.975, a, b).
-    # TODO 7: Return the dict with all 13 keys (see problem.md).
+    cohort = (
+        df.filter(pl.col("experiment_group").is_in(COHORT))
+        .with_columns(
+            (pl.col("metric_value") >= CONVERT_THRESHOLD).alias("converted")
+        )
+    )
 
-    return {}  # <- replace with the completed answer dict
+    overall = cohort.select(
+        pl.len().alias("n_total"),
+        pl.col("converted").mean().alias("p_convert_overall"),
+        (pl.col("experiment_group") == "treatment_a").mean().alias("p_treatment"),
+    ).row(0, named=True)
+
+    by_group = {
+        row["experiment_group"]: row
+        for row in cohort.group_by("experiment_group").agg(
+            pl.len().alias("n"),
+            pl.col("converted").sum().alias("successes"),
+            pl.col("converted").mean().alias("p_convert"),
+        ).iter_rows(named=True)
+    }
+
+    n_control = by_group["control"]["n"]
+    n_treatment = by_group["treatment_a"]["n"]
+    n_total = overall["n_total"]
+    expected = n_total / 2.0
+    srm_chi2 = ((n_control - expected) ** 2 + (n_treatment - expected) ** 2) / expected
+    srm_p_value = float(stats.chi2.sf(srm_chi2, df=1))
+
+    p_convert_treatment = by_group["treatment_a"]["p_convert"]
+    p_convert_overall = overall["p_convert_overall"]
+    p_treatment_given_convert = (
+        p_convert_treatment * overall["p_treatment"] / p_convert_overall
+    )
+
+    p_fraud_given_flagged = (
+        FRAUD_SENSITIVITY
+        * FRAUD_BASE_RATE
+        / (
+            FRAUD_SENSITIVITY * FRAUD_BASE_RATE
+            + FRAUD_FPR * (1.0 - FRAUD_BASE_RATE)
+        )
+    )
+
+    successes = by_group["treatment_a"]["successes"]
+    failures = n_treatment - successes
+    beta_post_alpha = BETA_PRIOR_ALPHA + successes
+    beta_post_beta = BETA_PRIOR_BETA + failures
+    posterior_mean = beta_post_alpha / (beta_post_alpha + beta_post_beta)
+    cred_int_low = float(stats.beta.ppf(0.025, beta_post_alpha, beta_post_beta))
+    cred_int_high = float(stats.beta.ppf(0.975, beta_post_alpha, beta_post_beta))
+
+    return {
+        "p_convert_overall": p_convert_overall,
+        "p_convert_control": by_group["control"]["p_convert"],
+        "p_convert_treatment": p_convert_treatment,
+        "p_treatment_given_convert": p_treatment_given_convert,
+        "srm_chi2": srm_chi2,
+        "srm_p_value": srm_p_value,
+        "srm_flag": bool(srm_p_value < 1e-3),
+        "p_fraud_given_flagged": p_fraud_given_flagged,
+        "beta_post_alpha": beta_post_alpha,
+        "beta_post_beta": beta_post_beta,
+        "posterior_mean": posterior_mean,
+        "cred_int_low": cred_int_low,
+        "cred_int_high": cred_int_high,
+    }
 
 
 if __name__ == "__main__":
