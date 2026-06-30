@@ -108,16 +108,43 @@ async def _run() -> dict:
 
     # TODO 1: Embed the corpus and the questions with embedder.embed(list_of_text).
     #         (embed is async — await it.)
+    corpus_vectors = await embedder.embed(corpus)
+    question_vectors = await embedder.embed(questions)
 
     # TODO 2: For each question, rank corpus docs by _cosine() and take the
     #         top-3 indices (highest similarity first).
+    retrieved: list[list[int]] = []
+    for q_vec in question_vectors:
+        ranked = sorted(
+            range(len(corpus_vectors)),
+            key=lambda idx: _cosine(q_vec, corpus_vectors[idx]),
+            reverse=True,
+        )
+        retrieved.append([int(idx) for idx in ranked[:TOP_K]])
 
     # TODO 3: For each question, build a context from its top-3 docs and
     #         generate a grounded answer via make_delegate(temperature=0.0) +
     #         run_delegate_text. Instruct the model to answer ONLY from context.
+    delegate = make_delegate(temperature=0.0)
 
-    retrieved: list[list[int]] = []
     answers: list[str] = []
+    for question, top_indices in zip(questions, retrieved):
+        context = "\n\n".join(
+            f"[Document {idx}]\n{corpus[idx]}" for idx in top_indices
+        )
+        prompt = f"""Answer the question using ONLY the context below.
+If the answer is present, give one concise sentence and include the exact key fact.
+If the answer is not present, say "The context does not contain the answer."
+
+Context:
+{context}
+
+Question: {question}
+
+Grounded answer:"""
+        answer, *_ = await run_delegate_text(delegate, prompt)
+        answers.append(answer.strip())
+
     return {"retrieved": retrieved, "answers": answers}
 
 

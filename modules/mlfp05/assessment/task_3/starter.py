@@ -76,28 +76,44 @@ def solve() -> dict:
     class GRUForecaster(nn.Module):
         def __init__(self) -> None:
             super().__init__()
-            # self.rnn = nn.GRU(1, 16, batch_first=True)
-            # self.head = nn.Linear(16, 1)
+            self.rnn = nn.GRU(1, 16, batch_first=True)
+            self.head = nn.Linear(16, 1)
 
         def forward(self, x):
-            # out, _ = self.rnn(x); return self.head(out[:, -1, :]).squeeze(-1)
-            return torch.zeros(x.shape[0])  # <- replace
+            out, _ = self.rnn(x)
+            return self.head(out[:, -1, :]).squeeze(-1)
 
     model = GRUForecaster()
 
     # TODO 2: report whether the model uses a recurrent layer (it must).
-    uses_recurrent = False  # <- replace with True once you add the GRU
+    uses_recurrent = any(
+        isinstance(layer, (nn.GRU, nn.LSTM, nn.RNN)) for layer in model.modules()
+    )
 
     # TODO 3: train with MSE on (X_train, y_train).
     #         ~60 epochs of Adam (lr=1e-3), batch size 64 works well.
     #         loss = F.mse_loss(model(xb), yb)
-    # train_ds = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
-    # loader = DataLoader(train_ds, batch_size=64, shuffle=True)
-    # optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
-    # for epoch in range(60): ...
+    train_ds = TensorDataset(
+        torch.tensor(X_train, dtype=torch.float32),
+        torch.tensor(y_train, dtype=torch.float32),
+    )
+    loader = DataLoader(train_ds, batch_size=64, shuffle=True)
+    optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    model.train()
+    for _ in range(60):
+        for xb, yb in loader:
+            optimiser.zero_grad()
+            loss = F.mse_loss(model(xb), yb)
+            loss.backward()
+            optimiser.step()
 
     # TODO 4: predict the next value on X_test.
-    test_pred = np.zeros(len(y_test), dtype=np.float32)  # <- replace
+    model.eval()
+    with torch.no_grad():
+        test_pred = (
+            model(torch.tensor(X_test, dtype=torch.float32)).cpu().numpy()
+        ).astype(np.float32)
 
     return {
         "model": model,

@@ -54,17 +54,28 @@ def solve() -> dict:
     """Recover the planted personas with the kailash-ml ClusteringEngine."""
     df = make_customers()
 
-    # TODO 1: Standardise every feature to a z-score in Polars
-    #         ((value - mean) / std). This is load-bearing — raw scales differ
-    #         by ~40x and unstandardised distance collapses the recovery.
-    # TODO 2: Create a ClusteringEngine().
-    # TODO 3: Call sweep_k(zdf, range(2, 9), algorithm="kmeans",
-    #         criterion="silhouette") and read `optimal_k` (do NOT hardcode K).
-    # TODO 4: fit(zdf, algorithm="kmeans", n_clusters=optimal_k); read `labels`
-    #         and `silhouette_score` off the ClusterResult.
-    # TODO 5: Return {"labels": [...], "n_clusters": int, "silhouette": float}.
+    zdf = df.select(
+        [
+            ((pl.col(feature) - pl.col(feature).mean()) / pl.col(feature).std()).alias(
+                feature
+            )
+            for feature in FEATURES
+        ]
+    )
 
-    return {"labels": [0] * df.height, "n_clusters": 1, "silhouette": 0.0}
+    clustering = ClusteringEngine()
+    sweep_result = clustering.sweep_k(
+        zdf, range(2, 9), algorithm="kmeans", criterion="silhouette"
+    )
+    optimal_k = int(sweep_result.optimal_k)
+
+    fit_result = clustering.fit(zdf, algorithm="kmeans", n_clusters=optimal_k)
+
+    return {
+        "labels": [int(label) for label in fit_result.labels],
+        "n_clusters": optimal_k,
+        "silhouette": float(fit_result.silhouette_score),
+    }
 
 
 if __name__ == "__main__":

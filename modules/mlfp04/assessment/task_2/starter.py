@@ -46,23 +46,26 @@ def solve() -> dict:
     """Compress with PCA and flag off-manifold rows — kailash-ml engines."""
     df = make_sensor_matrix()
 
-    # TODO 1: DimReductionEngine().reduce(df, algorithm="pca", n_components=df.width);
-    #         read explained_variance_ratio, take the cumulative sum, and find the
-    #         smallest count of components reaching >= 0.90. Call it n_components_90.
-    # TODO 2: reduce(df, algorithm="pca", n_components=n_components_90); read
-    #         reconstruction_error off the DimReductionResult.
-    # TODO 3: AnomalyDetectionEngine().detect(df, algorithm="isolation_forest",
-    #         contamination=CONTAMINATION); read scores and labels.
-    # TODO 4: Build anomaly_labels (1 = anomaly, 0 = normal). The engine flags
-    #         anomalies with label == -1.
-    # TODO 5: Return the dict described in problem.md (5 keys).
+    dim_reducer = DimReductionEngine()
+    full_rank = dim_reducer.reduce(df, algorithm="pca", n_components=df.width)
+    cumulative_variance = np.cumsum(full_rank.explained_variance_ratio)
+    n_components_90 = int(np.searchsorted(cumulative_variance, 0.90) + 1)
+
+    compressed = dim_reducer.reduce(
+        df, algorithm="pca", n_components=n_components_90
+    )
+
+    anomaly_result = AnomalyDetectionEngine().detect(
+        df, algorithm="isolation_forest", contamination=CONTAMINATION
+    )
+    anomaly_labels = [1 if int(label) == -1 else 0 for label in anomaly_result.labels]
 
     return {
-        "n_components_90": df.width,
-        "reconstruction_error": 0.0,
-        "anomaly_scores": [0.0] * df.height,
-        "anomaly_labels": [0] * df.height,
-        "n_anomalies": 0,
+        "n_components_90": n_components_90,
+        "reconstruction_error": float(compressed.reconstruction_error),
+        "anomaly_scores": [float(score) for score in anomaly_result.scores],
+        "anomaly_labels": anomaly_labels,
+        "n_anomalies": int(sum(anomaly_labels)),
     }
 
 

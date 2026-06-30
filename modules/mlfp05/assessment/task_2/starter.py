@@ -57,28 +57,54 @@ def solve() -> dict:
     class TinyCNN(nn.Module):
         def __init__(self) -> None:
             super().__init__()
-            # self.features = nn.Sequential(...)
-            # self.head = nn.Sequential(...)
+            self.features = nn.Sequential(
+                nn.Conv2d(1, 16, kernel_size=3, padding=1),
+                nn.BatchNorm2d(16),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Conv2d(16, 32, kernel_size=3, padding=1),
+                nn.BatchNorm2d(32),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Flatten(),
+            )
+            self.head = nn.Sequential(
+                nn.Linear(32 * 2 * 2, 64),
+                nn.ReLU(),
+                nn.Linear(64, N_CLASSES),
+            )
 
         def forward(self, x):
-            # return self.head(self.features(x))
-            return torch.zeros(x.shape[0], N_CLASSES)  # <- replace
+            return self.head(self.features(x))
 
     model = TinyCNN()
 
     # TODO 2: count the nn.Conv2d layers you actually defined.
-    n_conv = 0  # <- replace (must match the real number of Conv2d layers)
+    n_conv = sum(1 for layer in model.modules() if isinstance(layer, nn.Conv2d))
 
     # TODO 3: train with cross-entropy on (X_train, y_train).
     #         ~25 epochs of Adam (lr=1e-3), batch size 64 is enough.
     #         loss = F.cross_entropy(model(xb), yb)
-    # train_ds = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
-    # loader = DataLoader(train_ds, batch_size=64, shuffle=True)
-    # optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
-    # for epoch in range(25): ...
+    train_ds = TensorDataset(
+        torch.tensor(X_train, dtype=torch.float32),
+        torch.tensor(y_train, dtype=torch.long),
+    )
+    loader = DataLoader(train_ds, batch_size=64, shuffle=True)
+    optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    model.train()
+    for _ in range(30):
+        for xb, yb in loader:
+            optimiser.zero_grad()
+            loss = F.cross_entropy(model(xb), yb)
+            loss.backward()
+            optimiser.step()
 
     # TODO 4: predict on X_test (argmax of logits).
-    preds = np.zeros(len(y_test), dtype=int)  # <- replace with real predictions
+    model.eval()
+    with torch.no_grad():
+        logits = model(torch.tensor(X_test, dtype=torch.float32))
+    preds = logits.argmax(dim=1).cpu().numpy()
 
     return {
         "model": model,

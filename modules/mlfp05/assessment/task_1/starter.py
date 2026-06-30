@@ -66,7 +66,7 @@ def solve() -> dict:
 
     # TODO 1: choose a bottleneck size that is STRICTLY smaller than INPUT_DIM (12).
     #         A value around 3-5 captures the healthy manifold without copying input.
-    latent_dim = 0  # <- replace with your undercomplete bottleneck (1..11)
+    latent_dim = 4
 
     # TODO 2: build an undercomplete autoencoder as a torch.nn.Module.
     #         encoder: INPUT_DIM -> ... -> latent_dim
@@ -75,26 +75,48 @@ def solve() -> dict:
     class AE(nn.Module):
         def __init__(self) -> None:
             super().__init__()
-            # self.encoder = nn.Sequential(...)
-            # self.decoder = nn.Sequential(...)
+            self.encoder = nn.Sequential(
+                nn.Linear(INPUT_DIM, 16),
+                nn.ReLU(),
+                nn.Linear(16, 8),
+                nn.ReLU(),
+                nn.Linear(8, latent_dim),
+            )
+            self.decoder = nn.Sequential(
+                nn.Linear(latent_dim, 8),
+                nn.ReLU(),
+                nn.Linear(8, 16),
+                nn.ReLU(),
+                nn.Linear(16, INPUT_DIM),
+            )
 
         def forward(self, x):
-            # return self.decoder(self.encoder(x))
-            return x  # <- replace
+            return self.decoder(self.encoder(x))
 
     model = AE()
 
     # TODO 3: train the AE with MSE reconstruction loss on X_train ONLY.
     #         ~40 epochs of Adam (lr=1e-3) on batches of healthy cycles is plenty.
     #         Hint: loss = F.mse_loss(model(batch), batch)
-    # train_tensor = torch.tensor(X_train)
-    # loader = DataLoader(TensorDataset(train_tensor), batch_size=64, shuffle=True)
-    # optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
-    # for epoch in range(40): ...
+    train_tensor = torch.tensor(X_train, dtype=torch.float32)
+    loader = DataLoader(TensorDataset(train_tensor), batch_size=64, shuffle=True)
+    optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    model.train()
+    for _ in range(60):
+        for (batch,) in loader:
+            optimiser.zero_grad()
+            loss = F.mse_loss(model(batch), batch)
+            loss.backward()
+            optimiser.step()
 
     # TODO 4: score the test set — per-row mean squared reconstruction error.
     #         model.eval(); no_grad; scores = ((X_test - recon) ** 2).mean(axis=1)
-    scores = np.zeros(len(y_test), dtype=float)  # <- replace with real scores
+    model.eval()
+    with torch.no_grad():
+        test_tensor = torch.tensor(X_test, dtype=torch.float32)
+        recon = model(test_tensor).cpu().numpy()
+    scores = ((X_test - recon) ** 2).mean(axis=1)
 
     return {
         "model": model,

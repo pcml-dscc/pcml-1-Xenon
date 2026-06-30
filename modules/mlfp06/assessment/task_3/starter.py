@@ -72,6 +72,56 @@ def _make_tools(df: pl.DataFrame, call_log: list[tuple[str, dict]]) -> ToolRegis
     #                executor=dataset_size)
     # count_by_label needs a 'label' string param; get_review_by_index needs an
     # 'index' integer param. The no-arg tools take properties={} .
+    reg.register(
+        name="dataset_size",
+        description="Return the total number of SST-2 reviews in the dataset.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        executor=dataset_size,
+    )
+    reg.register(
+        name="count_by_label",
+        description=(
+            "Count how many SST-2 reviews have a specific sentiment label. "
+            "Use label='positive' for positive reviews and label='negative' "
+            "for negative reviews."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string",
+                    "enum": ["positive", "negative"],
+                    "description": "Sentiment label to count: positive or negative.",
+                }
+            },
+            "required": ["label"],
+        },
+        executor=count_by_label,
+    )
+    reg.register(
+        name="average_review_length",
+        description="Return the average SST-2 review length in characters.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        executor=average_review_length,
+    )
+    reg.register(
+        name="get_review_by_index",
+        description=(
+            "Return the sentiment label and text snippet for the SST-2 review "
+            "at a zero-based integer row index."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "integer",
+                    "description": "Zero-based review row index, e.g. 0.",
+                }
+            },
+            "required": ["index"],
+        },
+        executor=get_review_by_index,
+    )
     return reg
 
 
@@ -87,11 +137,38 @@ async def _run() -> dict:
         #         temperature=0.0, max_tokens=512, tools=reg) and run it on the
         #         question. Iterate over delegate.run(question); capture the
         #         turn_complete event's text as the final answer.
+        delegate = make_delegate(
+            model="llama3.2:3b",
+            temperature=0.0,
+            max_tokens=512,
+            tools=reg,
+        )
+
+        final_text = ""
+        streamed_text = ""
+        prompt = (
+            "Answer this SST-2 dataset question by calling the single most "
+            "appropriate available tool, then give a concise final answer.\n\n"
+            f"Question: {question}"
+        )
+        async for event in delegate.run(prompt):
+            ev_type = getattr(event, "event_type", None)
+            text = getattr(event, "text", None)
+            if ev_type == "text_delta" and text:
+                streamed_text += text
+            elif ev_type == "turn_complete":
+                final_text = text or streamed_text
 
         # TODO 3: append {"question": question,
         #                 "tools_called": [[name, args], ...] from call_log,
         #                 "answer": final_text} to transcripts.
-        pass
+        transcripts.append(
+            {
+                "question": question,
+                "tools_called": [[name, args] for name, args in call_log],
+                "answer": final_text.strip() or streamed_text.strip(),
+            }
+        )
     return {"tool_names": tool_names, "transcripts": transcripts}
 
 

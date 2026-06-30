@@ -53,23 +53,34 @@ def solve() -> dict:
     train_df = df.head(SPLIT)
     test_df = df.tail(N - SPLIT)
 
-    # TODO 1: Build a SklearnTrainable wrapping an MLPClassifier with at least
-    #         one hidden layer, e.g.
-    #         estimator=MLPClassifier(hidden_layer_sizes=(32, 16),
-    #             activation="relu", max_iter=2000, random_state=SEED),
-    #         target=TARGET, metric="accuracy".
-    # TODO 2: fit on train_df.
-    # TODO 3: predict on test_df.select(FEATURES) and on train_df.select(FEATURES).
-    #         The kailash-ml prediction object exposes .to_polars() and .column —
-    #         pull the predicted-label column out as a numpy int array.
-    # TODO 4: Compute test_accuracy and train_accuracy against the true labels.
-    # TODO 5: Return {"test_predictions": [...] (length 200), "test_accuracy":
-    #         float, "train_accuracy": float}.
+    trainable = SklearnTrainable(
+        estimator=MLPClassifier(
+            hidden_layer_sizes=(32, 16),
+            activation="relu",
+            max_iter=2000,
+            random_state=SEED,
+        ),
+        target=TARGET,
+        metric="accuracy",
+    )
+    trainable.fit(train_df)
+
+    test_prediction = trainable.predict(test_df.select(FEATURES))
+    train_prediction = trainable.predict(train_df.select(FEATURES))
+    test_preds = (
+        test_prediction.to_polars()[test_prediction.column].to_numpy().astype(int)
+    )
+    train_preds = (
+        train_prediction.to_polars()[train_prediction.column].to_numpy().astype(int)
+    )
+
+    test_actual = test_df[TARGET].to_numpy()
+    train_actual = train_df[TARGET].to_numpy()
 
     return {
-        "test_predictions": [0] * (N - SPLIT),
-        "test_accuracy": 0.0,
-        "train_accuracy": 0.0,
+        "test_predictions": test_preds.tolist(),
+        "test_accuracy": float((test_preds == test_actual).mean()),
+        "train_accuracy": float((train_preds == train_actual).mean()),
     }
 
 
